@@ -80,10 +80,47 @@ def get_shader():
 
 @persistent
 def check_viewer_property(self, context):
-	if bpy.context.screen.camera_viewer.viewer_toggle == True:
+	if context.screen.camera_viewer.viewer_toggle == True:
 		offscreen = get_offscreen(bpy.context)
-		dns["draw_viewer_toggle"] = bpy.types.SpaceView3D.draw_handler_add(draw_viewer_toggle, (bpy.context, offscreen), 'WINDOW', 'POST_PIXEL')
-		
+		dns["draw_viewer_toggle"] = bpy.types.SpaceView3D.draw_handler_add(draw_viewer_toggle, (context, offscreen), 'WINDOW', 'POST_PIXEL')
+
+def get_viewer_positon(camera_viewer, context, width, height):
+	x = camera_viewer.x
+	y = camera_viewer.y
+	region_width = context.region.width
+	region_height = context.region.height
+
+	n_panel = None
+	tool_panel = None
+	for r in context.area.regions:
+		if r.type == 'UI':
+			n_panel = r.width
+		if r.type == 'TOOLS':
+			tool_panel = r.width
+		if n_panel and tool_panel is not None:
+			break
+
+	asset_shelf_height = 0
+	for r in context.area.regions:
+		if r.type == 'ASSET_SHELF':
+			asset_shelf_height = r.height
+			break
+
+	if camera_viewer.position == 'Left-Bottom':
+		x = x+20
+		y = y+20+asset_shelf_height
+	elif camera_viewer.position == 'Right-Bottom':
+		x = (x+40)*-1 + region_width-width
+		y = y+20+asset_shelf_height
+	elif camera_viewer.position == 'Left-Top':
+		x = x+20 + tool_panel
+		y = (y+180)*-1 + region_height-height
+	elif camera_viewer.position == 'Right-Top':
+		x = (x+40)*-1 + region_width-n_panel-width
+		y = (y+70)*-1 + region_height-height
+
+	return x, y
+
 def draw_viewport_outline():
 	if bpy.context.screen.camera_viewer.viewport_outline == False:
 		return
@@ -220,7 +257,7 @@ def draw_outline(context, x, y, width, height, thickness, color):
 			shader.uniform_float("color", (0.25,0.5,1,1))
 		else:
 			shader.uniform_float("color", (1,0.35,0.35,1))
-	elif bpy.context.space_data.region_3d.view_perspective == 'CAMERA':
+	elif context.space_data.region_3d.view_perspective == 'CAMERA':
 		shader.uniform_float("color", (0.486275,1,0.67451,1))
 	else:
 		shader.uniform_float("color", color)
@@ -231,7 +268,6 @@ def draw_outline(context, x, y, width, height, thickness, color):
 	gpu.state.blend_set("NONE")
 
 def draw_viewer_toggle(context, offscreen):
-	context = bpy.context
 	if context.screen.camera_viewer.viewer_toggle == True:
 		camera_viewer = context.screen.camera_viewer
 
@@ -250,20 +286,6 @@ def draw_viewer_toggle(context, offscreen):
 			return
 			
 		if camera:
-
-			x = camera_viewer.x
-			y = camera_viewer.y
-			region_width = context.region.width
-			region_height = context.region.height
-			for r in context.area.regions:
-				if r.type == 'UI':
-					n_panel = r.width
-					break
-			for r in context.area.regions:
-				if r.type == 'TOOLS':
-					tool_panel = r.width
-					break
-
 			scene = context.scene
 
 			render = scene.render
@@ -293,19 +315,8 @@ def draw_viewer_toggle(context, offscreen):
 				view_matrix,
 				projection_matrix,
 				do_color_management=True)
-			
-			if camera_viewer.position == 'Left-Bottom':
-				x = x+20
-				y = y+20
-			elif camera_viewer.position == 'Right-Bottom':
-				x = (x+40)*-1 + region_width-width
-				y = y+20
-			elif camera_viewer.position == 'Left-Top':
-				x = x+20 + tool_panel
-				y = (y+180)*-1 + region_height-height
-			elif camera_viewer.position == 'Right-Top':
-				x = (x+20)*-1 + region_width-n_panel-width
-				y = (y+60)*-1 + region_height-height
+
+			x, y = get_viewer_positon(camera_viewer, context, width, height)
 
 			shader = get_shader()
 
@@ -356,35 +367,12 @@ class Camera_Viewer_Navigation_Shape(bpy.types.Gizmo):
 		context = bpy.context
 		camera_viewer = context.screen.camera_viewer
 		scene = context.scene
-		x = camera_viewer.x
-		y = camera_viewer.y
-		region_width = context.region.width
-		region_height = context.region.height
 		render = scene.render
 		scale = render.resolution_y/1080
 		width = int(render.resolution_x/scale * camera_viewer.size/3.5)
 		height = int(render.resolution_y/scale * camera_viewer.size/3.5)
-		for r in context.area.regions:
-			if r.type == 'UI':
-				n_panel = r.width
-				break
-		for r in context.area.regions:
-			if r.type == 'TOOLS':
-				tool_panel = r.width
-				break
 
-		if camera_viewer.position == 'Left-Bottom':
-			x = x+20
-			y = y+20
-		elif camera_viewer.position == 'Right-Bottom':
-			x = (x+40)*-1 + region_width-width
-			y = y+20
-		elif camera_viewer.position == 'Left-Top':
-			x = x+20 + tool_panel
-			y = (y+180)*-1 + region_height-height
-		elif camera_viewer.position == 'Right-Top':
-			x = (x+20)*-1 + region_width-n_panel-width
-			y = (y+60)*-1 + region_height-height
+		x, y = get_viewer_positon(camera_viewer, context, width, height)
 
 		vertices = ((x, y), (x+width,y), (x+width, y+height), (x,y+height))
 
@@ -417,35 +405,12 @@ class Camera_Viewer_Navigation_Shape(bpy.types.Gizmo):
 	def test_select(self, context, location):
 		camera_viewer = context.screen.camera_viewer
 		scene = context.scene
-		x = camera_viewer.x
-		y = camera_viewer.y
-		region_width = context.region.width
-		region_height = context.region.height
 		render = scene.render
 		scale = render.resolution_y/1080
 		width = int(render.resolution_x/scale * camera_viewer.size/3.5)
 		height = int(render.resolution_y/scale * camera_viewer.size/3.5)
-		for r in context.area.regions:
-			if r.type == 'UI':
-				n_panel = r.width
-				break
-		for r in context.area.regions:
-			if r.type == 'TOOLS':
-				tool_panel = r.width
-				break
 
-		if camera_viewer.position == 'Left-Bottom':
-			x = x+20
-			y = y+20
-		elif camera_viewer.position == 'Right-Bottom':
-			x = (x+40)*-1 + region_width-width
-			y = y+20
-		elif camera_viewer.position == 'Left-Top':
-			x = x+20 + tool_panel
-			y = (y+180)*-1 + region_height-height
-		elif camera_viewer.position == 'Right-Top':
-			x = (x+20)*-1 + region_width-n_panel-width
-			y = (y+60)*-1 + region_height-height
+		x, y = get_viewer_positon(camera_viewer, context, width, height)
 
 		vertices = ((x, y), (x+width,y), (x+width, y+height), (x,y+height))
 
@@ -573,77 +538,37 @@ class Camera_Viewer_UI_Control(bpy.types.GizmoGroup):
 
 		return gizmo
 
-	def draw_modify(self, context, camera_viewer, x, y, width, height, region_width, region_height, tool_panel, n_panel):
+	def draw_modify(self, context, camera_viewer, width, height):
 		camera_viewer_ui = context.scene.camera_viewer_ui
-		space = self.space
 
 		gizmo = self.gizmos[1]
 
-		if camera_viewer.position == 'Left-Bottom':
-			x = x+20
-			y = y+20
-		elif camera_viewer.position == 'Right-Bottom':
-			x = (x+40)*-1 + region_width-width
-			y = y+20
-		elif camera_viewer.position == 'Left-Top':
-			x = x+20 + tool_panel
-			y = (y+180)*-1 + region_height-height
-		elif camera_viewer.position == 'Right-Top':
-			x = (x+20)*-1 + region_width-n_panel-width
-			y = (y+60)*-1 + region_height-height
+		x, y = get_viewer_positon(camera_viewer, context, width, height)
 
-		if not camera_viewer.active_camera:
-			if camera_viewer.lock_camera and camera_viewer.camera:
-				camera = bpy.data.objects[camera_viewer.camera]
-			else:
-				camera = context.scene.camera
-		else:
-			if context.active_object.type == 'CAMERA':
-				camera = context.active_object
-			else:
-				camera = None
-
-		gizmo.hide = not camera_viewer.viewer_toggle or bool(camera_viewer.statuses) or not camera or (context.scene.render.engine == 'CYCLES' and space.shading.type in {'RENDERED'}) or not camera_viewer_ui.use_ui
-		gizmo.matrix_basis[1][3] = y + height
+		gizmo.hide = not camera_viewer.viewer_toggle or bool(camera_viewer.statuses) or not camera_viewer_ui.use_ui or (camera_viewer.disable_enter and context.space_data.region_3d.view_perspective == 'CAMERA')
 		if 'Left' in camera_viewer.position:
 			gizmo.matrix_basis[0][3] = x + width
 		if 'Right' in camera_viewer.position:
-			gizmo.matrix_basis[0][3] = x + 12
+			gizmo.matrix_basis[0][3] = x
+		if 'Top' in camera_viewer.position:
+			gizmo.matrix_basis[1][3] = y
+		if 'Bottom' in camera_viewer.position:
+			gizmo.matrix_basis[1][3] = y + height
 
-	def draw_navigation(self, context, camera_viewer, x, y, width, height, region_width, region_height, tool_panel, n_panel):
+	def draw_navigation(self, context, camera_viewer, width, height):
 		gizmo = self.gizmos[0]
-		if camera_viewer.position == 'Left-Bottom':
-			x = x+20
-			y = y+20
-		elif camera_viewer.position == 'Right-Bottom':
-			x = (x+40)*-1 + region_width-width
-			y = y+20
-		elif camera_viewer.position == 'Left-Top':
-			x = x+20 + tool_panel
-			y = (y+180)*-1 + region_height-height
-		elif camera_viewer.position == 'Right-Top':
-			x = (x+20)*-1 + region_width-n_panel-width
-			y = (y+60)*-1 + region_height-height
+
+		x, y = get_viewer_positon(camera_viewer, context, width, height)
 
 		gizmo.scale_basis = 150 * camera_viewer.size
-		gizmo.hide = not context.screen.camera_viewer.viewer_toggle or context.screen.camera_viewer.lock_viewer
+		gizmo.hide = not camera_viewer.viewer_toggle or camera_viewer.lock_viewer or (camera_viewer.disable_enter and context.space_data.region_3d.view_perspective == 'CAMERA')
 		gizmo.matrix_basis[0][3] = x + width/2
 		gizmo.matrix_basis[1][3] = y + height/2
 
-	def draw_space(self, context, camera_viewer, x, y, width, height, region_width, region_height, tool_panel, n_panel):
+	def draw_space(self, context, camera_viewer, width, height):
 		camera_viewer_ui = context.scene.camera_viewer_ui
-		if camera_viewer.position == 'Left-Bottom':
-			x = x+20
-			y = y+20
-		elif camera_viewer.position == 'Right-Bottom':
-			x = (x+40)*-1 + region_width-width
-			y = y+20
-		elif camera_viewer.position == 'Left-Top':
-			x = x+20 + tool_panel
-			y = (y+180)*-1 + region_height-height
-		elif camera_viewer.position == 'Right-Top':
-			x = (x+20)*-1 + region_width-n_panel-width
-			y = (y+60)*-1 + region_height-height
+
+		x, y = get_viewer_positon(camera_viewer, context, width, height)
 
 		space = self.space
 		scale = 14
@@ -787,31 +712,18 @@ class Camera_Viewer_UI_Control(bpy.types.GizmoGroup):
 		camera_viewer = context.screen.camera_viewer
 		if not self.space and context.screen.camera_viewer.viewer_toggle:
 			self.draw_space_gizmo(context)
-		elif self.space:
-			x = camera_viewer.x
-			y = camera_viewer.y
-			region_width = context.region.width
-			region_height = context.region.height
-			for r in context.area.regions:
-				if r.type == 'UI':
-					n_panel = r.width
-					break
-			for r in context.area.regions:
-				if r.type == 'TOOLS':
-					tool_panel = r.width
-					break
-				
+		if self.space:
 			scene = context.scene
 			render = scene.render
 			scale = render.resolution_y/1080
 			width = int(render.resolution_x/scale * camera_viewer.size/3.5)
 			height = int(render.resolution_y/scale * camera_viewer.size/3.5)
 
-			self.draw_navigation(context, camera_viewer, x, y, width, height, region_width, region_height, tool_panel, n_panel)
+			self.draw_navigation(context, camera_viewer, width, height)
 
-			self.draw_modify(context, camera_viewer, x, y, width, height, region_width, region_height, tool_panel, n_panel)
+			self.draw_modify(context, camera_viewer, width, height)
 
-			self.draw_space(context, camera_viewer, x, y, width, height, region_width, region_height, tool_panel, n_panel)
+			self.draw_space(context, camera_viewer, width, height)
 
 	def setup(self, context):
 		gizmo = self.gizmos.new("VIEW3D_GT_Camera_Viewer_Navigation_Shape")   #GIZMO_GT_button_2d
@@ -845,6 +757,8 @@ class Camera_Viewer_UI_Control(bpy.types.GizmoGroup):
 		gizmo.scale_basis = 12
 		gizmo.icon = 'BLANK1'
 
+		self.viewer_gizmos['Modify'] = gizmo
+
 		if context.screen.camera_viewer.viewer_toggle:
 			self.draw_space_gizmo(context)
 
@@ -857,20 +771,19 @@ class Camera_Viewer_Props(bpy.types.PropertyGroup):
 			if not bpy.data.screens.get(name + ' Camera Viewer'):
 
 				bpy.ops.screen.new()
-				if bpy.data.screens.get('Default.001'):
-					bpy.data.screens['Default.001'].name = name + ' Camera Viewer'
-				elif bpy.data.screens.get('Layout.001'):
-					bpy.data.screens['Layout.001'].name = name + ' Camera Viewer'
+				if bpy.data.screens.get(f'{name}.001'):
+					bpy.data.screens[f'{name}.001'].name = name + ' Camera Viewer'
 				else:
 					self.report({'WARNING'}, f"View3D not found, cannot run operator : Current View3D {name}")
 					return
 				
-				context.window.screen=bpy.data.screens[name]
+				context.window.screen = bpy.data.screens[name]
 
 				for a in bpy.data.screens[context.screen.name +' Camera Viewer'].areas:
 					if a.type == 'VIEW_3D':
 						space = a.spaces[0]
 						break
+					
 				space.overlay.show_look_dev = False
 
 			offscreen = get_offscreen(context)
