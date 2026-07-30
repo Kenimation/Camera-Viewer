@@ -81,8 +81,16 @@ def get_shader():
 @persistent
 def check_viewer_property(self, context):
 	if context.screen.camera_viewer.viewer_toggle == True:
-		offscreen = get_offscreen(bpy.context)
+		offscreen = get_offscreen(context)
 		dns["draw_viewer_toggle"] = bpy.types.SpaceView3D.draw_handler_add(draw_viewer_toggle, (context, offscreen), 'WINDOW', 'POST_PIXEL')
+
+def get_viewer_space(context):
+	for a in bpy.data.screens[context.screen.name +' Camera Viewer'].areas:
+		if a.type == 'VIEW_3D':
+			if a.spaces[0]:
+				space = a.spaces[0]
+				break
+	return space
 
 def get_viewer_positon(camera_viewer, context, width, height):
 	x = camera_viewer.x
@@ -298,11 +306,7 @@ def draw_viewer_toggle(context, offscreen):
 			projection_matrix = camera.calc_matrix_camera(
 				context.evaluated_depsgraph_get(), x=width, y=height)
 			
-			for a in bpy.data.screens[context.screen.name +' Camera Viewer'].areas:
-				if a.type == 'VIEW_3D':
-					if a.spaces[0]:
-						space = a.spaces[0]
-						break
+			space = get_viewer_space(context)
 
 			if context.scene.render.engine == 'CYCLES' and space.shading.type in {'RENDERED'}:
 				return
@@ -686,10 +690,7 @@ class Camera_Viewer_UI_Control(bpy.types.GizmoGroup):
 		return gizmo
 
 	def draw_space_gizmo(self, context):
-		for a in bpy.data.screens[context.screen.name +' Camera Viewer'].areas:
-			if a.type == 'VIEW_3D':
-				space = a.spaces[0]
-				break
+		space = get_viewer_space(context)
 
 		self.space = space
 
@@ -766,23 +767,22 @@ class Camera_Viewer_Props(bpy.types.PropertyGroup):
 	def update_toggle(self, context):
 		name = context.screen.name
 
-		if self.viewer_toggle == True:
+		if self.viewer_toggle:
 			# Create a new screen and set it as the active screen
 			if not bpy.data.screens.get(name + ' Camera Viewer'):
 
+				old_screens = set(bpy.data.screens.keys())
+
 				bpy.ops.screen.new()
-				if bpy.data.screens.get(f'{name}.001'):
-					bpy.data.screens[f'{name}.001'].name = name + ' Camera Viewer'
-				else:
-					self.report({'WARNING'}, f"View3D not found, cannot run operator : Current View3D {name}")
-					return
+
+				new_screens = set(bpy.data.screens.keys()) - old_screens
+
+				actual_new_name = new_screens.pop()
+				bpy.data.screens[actual_new_name].name = name + ' Camera Viewer'
 				
 				context.window.screen = bpy.data.screens[name]
 
-				for a in bpy.data.screens[context.screen.name +' Camera Viewer'].areas:
-					if a.type == 'VIEW_3D':
-						space = a.spaces[0]
-						break
+				space = get_viewer_space(context)
 					
 				space.overlay.show_look_dev = False
 
@@ -790,7 +790,7 @@ class Camera_Viewer_Props(bpy.types.PropertyGroup):
 
 			dns["draw_viewer_toggle"] = bpy.types.SpaceView3D.draw_handler_add(draw_viewer_toggle, (context, offscreen), 'WINDOW', 'POST_PIXEL')
 
-		elif self.viewer_toggle == False:
+		else:
 
 			if dns.get("draw_viewer_toggle"):
 
@@ -948,10 +948,8 @@ class Modify_Camera_Viewer_OT(bpy.types.Operator):
 	def invoke(self, context, event):
 		if context.area.type == 'VIEW_3D':
 			camera_viewer = context.screen.camera_viewer
-			for a in bpy.data.screens[context.screen.name +' Camera Viewer'].areas:
-				if a.type == 'VIEW_3D':
-					space = a.spaces[0]
-					break
+			space = get_viewer_space(context)
+
 			self.space = space
 			self.size = camera_viewer.size
 			self.quality = camera_viewer.quality
@@ -1071,10 +1069,8 @@ class Navigation_Camera_Viewer_OT(bpy.types.Operator):
 	def invoke(self, context, event):
 		camera_viewer = context.screen.camera_viewer
 
-		for a in bpy.data.screens[context.screen.name +' Camera Viewer'].areas:
-			if a.type == 'VIEW_3D':
-				space = a.spaces[0]
-				break
+		space = get_viewer_space(context)
+
 		if not camera_viewer.active_camera:
 			if camera_viewer.lock_camera and camera_viewer.camera:
 				camera = bpy.data.objects[camera_viewer.camera]
@@ -1110,10 +1106,7 @@ class Set_Camera_Viewer_Space_OT(bpy.types.Operator):
 	type : bpy.props.StringProperty(options={'HIDDEN'})
 
 	def execute(self, context):
-		for a in bpy.data.screens[context.screen.name +' Camera Viewer'].areas:
-			if a.type == 'VIEW_3D':
-				space = a.spaces[0]
-				break
+		space = get_viewer_space(context)
 
 		type = self.type
 
@@ -1158,10 +1151,8 @@ class CAMERA_PT_Viewer(bpy.types.Panel):
 	def draw(self, context):
 		camera_viewer = context.screen.camera_viewer
 		camera_viewer_ui = context.scene.camera_viewer_ui
-		for a in bpy.data.screens[context.screen.name +' Camera Viewer'].areas:
-			if a.type == 'VIEW_3D':
-				space = a.spaces[0]
-				break
+
+		space = get_viewer_space(context)
 
 		layout = self.layout
 		layout.label(text='Camera Viewer')
